@@ -50,29 +50,34 @@ type mockNetConn struct {
 	*mockNetworkIO
 }
 
-func (m *mockNetConn) LocalAddr() net.Addr  { return nil }
-func (m *mockNetConn) RemoteAddr() net.Addr { return nil }
+func (m *mockNetConn) LocalAddr() net.Addr                { return nil }
+func (m *mockNetConn) RemoteAddr() net.Addr               { return nil }
 func (m *mockNetConn) SetDeadline(t time.Time) error      { return nil }
 func (m *mockNetConn) SetReadDeadline(t time.Time) error  { return nil }
 func (m *mockNetConn) SetWriteDeadline(t time.Time) error { return nil }
 
 // TestNewServer verifies that NewServer configures an empty server with authentication callback rules.
 func TestNewServer(t *testing.T) {
-	authFn := func(username, password string) bool {
-		return username == "root" && password == "admin"
+	authFn := func(username, password string) (bool, AuthData) {
+		if username == "root" && password == "admin" {
+			return true, box.NewSome(map[string]any{})
+		}
+		return false, box.NewNone[map[string]any]()
 	}
 
 	server := NewServer(authFn)
 
 	assert.LengthMap(t, 0, server.handlers)
-	assert.True(t, server.authFn("root", "admin"))
-	assert.False(t, server.authFn("root", "wrong"))
+	authorized, _ := server.authFn("root", "admin")
+	assert.True(t, authorized)
+	authorized, _ = server.authFn("root", "wrong")
+	assert.False(t, authorized)
 }
 
 // TestRegisterHandler ensures routes mapping functions persist correctly inside internal structures.
 func TestRegisterHandler(t *testing.T) {
 	server := NewServer(nil)
-	dummyHandler := func(msg *Message) ResponseCode { return OK }
+	dummyHandler := func(msg *Message, _ AuthData) ResponseCode { return OK }
 
 	server.RegisterHandler(URL, dummyHandler)
 
@@ -88,10 +93,10 @@ func TestServer_Serve_NilListener(t *testing.T) {
 
 // TestServer_HandleConnection_Success validates processing structured frames and routing to handlers.
 func TestServer_HandleConnection_Success(t *testing.T) {
-	authFn := func(username, password string) bool { return true }
+	authFn := func(username, password string) (bool, AuthData) { return true, box.NewSome(map[string]any{}) }
 	server := NewServer(authFn)
 
-	server.RegisterHandler(URL, func(msg *Message) ResponseCode {
+	server.RegisterHandler(URL, func(msg *Message, _ AuthData) ResponseCode {
 		return OK
 	})
 
@@ -111,7 +116,7 @@ func TestServer_HandleConnection_Success(t *testing.T) {
 
 // TestServer_HandleConnection_Unauthorized checks that invalid auth returns UNAUTHORIZED status frame sequence.
 func TestServer_HandleConnection_Unauthorized(t *testing.T) {
-	authFn := func(username, password string) bool { return false }
+	authFn := func(username, password string) (bool, AuthData) { return false, box.NewNone[map[string]any]() }
 	server := NewServer(authFn)
 
 	rawFrame := "URL\t\thttps://atendi9.com\t\tAuth:intruder::hack\n\n"
@@ -127,7 +132,7 @@ func TestServer_HandleConnection_Unauthorized(t *testing.T) {
 
 // TestServer_HandleConnection_NoHandler checks that missing route schemas return ERROR payload codes.
 func TestServer_HandleConnection_NoHandler(t *testing.T) {
-	authFn := func(username, password string) bool { return true }
+	authFn := func(username, password string) (bool, AuthData) { return true, box.NewSome(map[string]any{}) }
 	server := NewServer(authFn)
 
 	// Sending DOCUMENT framing without an explicit mapped handler definition rule set
@@ -144,7 +149,8 @@ func TestServer_HandleConnection_NoHandler(t *testing.T) {
 
 // TestServer_HandleConnection_MalformedPacket checks response framing when buffer parsing routines break down.
 func TestServer_HandleConnection_MalformedPacket(t *testing.T) {
-	server := NewServer(nil)
+	authFn := func(username, password string) (bool, AuthData) { return false, box.NewNone[map[string]any]() }
+	server := NewServer(authFn)
 
 	rawFrame := "INVALID_FORMAT_PACKET_WITHOUT_TABS\n\n"
 	mockConn := &mockNetworkIO{
@@ -162,16 +168,16 @@ func TestValidateURLHandler(t *testing.T) {
 	handler := ValidateURLHandler()
 
 	msgHTTP := &Message{Data: box.NewSome([]byte("http://localhost"))}
-	assert.Equal(t, OK, handler(msgHTTP))
+	assert.Equal(t, OK, handler(msgHTTP, box.NewNone[map[string]any]()))
 
 	msgHTTPS := &Message{Data: box.NewSome([]byte("https://atendi9.com"))}
-	assert.Equal(t, OK, handler(msgHTTPS))
+	assert.Equal(t, OK, handler(msgHTTPS, box.NewNone[map[string]any]()))
 
 	msgInvalid := &Message{Data: box.NewSome([]byte("ftp://atendi9.com"))}
-	assert.Equal(t, ERROR, handler(msgInvalid))
+	assert.Equal(t, ERROR, handler(msgInvalid, box.NewNone[map[string]any]()))
 
 	msgEmpty := &Message{Data: box.NewSome([]byte{})}
-	assert.Equal(t, ERROR, handler(msgEmpty))
+	assert.Equal(t, ERROR, handler(msgEmpty, box.NewNone[map[string]any]()))
 }
 
 // TestValidateDocumentHandler evaluates byte boundary criteria checking schemas.
@@ -179,14 +185,14 @@ func TestValidateDocumentHandler(t *testing.T) {
 	handler := ValidateDocumentHandler(10)
 
 	msgValid := &Message{Data: box.NewSome([]byte("12345"))}
-	assert.Equal(t, OK, handler(msgValid))
+	assert.Equal(t, OK, handler(msgValid, box.NewNone[map[string]any]()))
 
 	msgTooLong := &Message{Data: box.NewSome([]byte("12345678901"))}
-	assert.Equal(t, ERROR, handler(msgTooLong))
+	assert.Equal(t, ERROR, handler(msgTooLong, box.NewNone[map[string]any]()))
 
 	msgZeroLength := &Message{Data: box.NewSome([]byte(""))}
-	assert.Equal(t, ERROR, handler(msgZeroLength))
+	assert.Equal(t, ERROR, handler(msgZeroLength, box.NewNone[map[string]any]()))
 
 	msgEmpty := &Message{Data: box.NewSome([]byte{})}
-	assert.Equal(t, ERROR, handler(msgEmpty))
+	assert.Equal(t, ERROR, handler(msgEmpty, box.NewNone[map[string]any]()))
 }

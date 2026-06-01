@@ -29,6 +29,16 @@ export declare enum ResponseCode {
 export declare const ErrInvalidFormat: Error;
 
 /**
+ * Class representing optional authentication metadata, mimicking box.Optional behavior.
+ */
+export declare class AuthData {
+  constructor(value?: Record<string, any> | null);
+  protected value: Record<string, any> | null;
+  isEmpty(): boolean;
+  get(): Record<string, any> | null;
+}
+
+/**
  * Authentication structure containing credentials.
  */
 export interface MessageAuth {
@@ -46,14 +56,22 @@ export interface AtxpMessage {
 }
 
 /**
+ * Structured response payload object returned by authentication check routines.
+ */
+export interface AuthResult {
+  authorized: boolean;
+  data: AuthData;
+}
+
+/**
  * Callback definition for processing ATXP authentication checks.
  */
-export type AuthCallback = (username: string, password: string) => boolean;
+export type AuthCallback = (username: string, password: string) => AuthResult;
 
 /**
  * Callback definition for processing custom operational business logic message updates.
  */
-export type HandlerCallback = (msg: AtxpMessage) => ResponseCode;
+export type HandlerCallback = (msg: AtxpMessage, authData: AuthData) => ResponseCode;
 
 /**
  * Converts a numeric Message Type (MT) enum to its equivalent string representation.

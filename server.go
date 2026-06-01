@@ -6,19 +6,27 @@ import (
 	"errors"
 	"net"
 	"strings"
+
+	"github.com/atendi9/box"
 )
 
+// AuthData encapsulates optional authentication metadata that may be associated with incoming ATXP messages, allowing handlers to access user credentials or session information when necessary.
+type AuthData box.Optional[map[string]any]
+
 // Handler defines a function signature capable of routing and processing incoming decrypted ATXP message payloads.
-type Handler func(msg *Message) ResponseCode
+type Handler func(msg *Message, authData AuthData) ResponseCode
+
+// AuthHandler defines a function signature for authentication logic, allowing the server to verify credentials and optionally return additional authentication data for use in message handling.
+type AuthHandler func(username, password string) (authorized bool, data AuthData)
 
 // Server manages inbound connection routing rules, payload verification, and session authentication lifecycles.
 type Server struct {
 	handlers map[MT]Handler
-	authFn   func(username, password string) bool
+	authFn   AuthHandler
 }
 
 // NewServer configures a brand new [Server] context setup with no default active route bindings.
-func NewServer(authFn func(username, password string) bool) *Server {
+func NewServer(authFn AuthHandler) *Server {
 	return &Server{
 		handlers: make(map[MT]Handler),
 		authFn:   authFn,
@@ -66,9 +74,15 @@ func (s *Server) HandleConnection(conn NetworkIO) {
 			return
 		}
 
-		if s.authFn != nil && !s.authFn(msg.Auth.Username, msg.Auth.Password) {
-			_, _ = SendResponse(conn, UNAUTHORIZED)
-			return
+		var authData AuthData
+
+		if s.authFn != nil {
+			authorized, data := s.authFn(msg.Auth.Username, msg.Auth.Password)
+			if !authorized {
+				_, _ = SendResponse(conn, UNAUTHORIZED)
+				return
+			}
+			authData = data
 		}
 
 		handler, exists := s.handlers[msg.Type]
@@ -77,14 +91,14 @@ func (s *Server) HandleConnection(conn NetworkIO) {
 			continue
 		}
 
-		code := handler(&msg)
+		code := handler(&msg, authData)
 		_, _ = SendResponse(conn, code)
 	}
 }
 
 // ValidateURLHandler provides a standard fallback business logic example validation for standard URL structures.
 func ValidateURLHandler() Handler {
-	return func(msg *Message) ResponseCode {
+	return func(msg *Message, _ AuthData) ResponseCode {
 		if msg.Data.IsEmpty() {
 			return ERROR
 		}
@@ -100,7 +114,7 @@ func ValidateURLHandler() Handler {
 
 // ValidateDocumentHandler provides a basic validation ensuring payload sizes match requirements.
 func ValidateDocumentHandler(maxBytes int) Handler {
-	return func(msg *Message) ResponseCode {
+	return func(msg *Message, _ AuthData) ResponseCode {
 		if msg.Data.IsEmpty() {
 			return ERROR
 		}

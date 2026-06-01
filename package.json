@@ -1,6 +1,6 @@
 {
   "name": "@atendi9/atxp-protocol",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "lightweight, text-framed application wire protocol designed for secure, fast, and structured communication over raw TCP or encrypted TLS transport layers. ",
   "keywords": [
     "atendi9",

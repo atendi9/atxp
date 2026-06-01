@@ -41,6 +41,34 @@ export const ResponseCode = {
 export const ErrInvalidFormat = new Error('malformed atxp packet protocol');
 
 /**
+ * Class representing optional authentication metadata, mimicking box.Optional behavior.
+ */
+export class AuthData {
+  /**
+   * @param {Record<string, any>|null|undefined} value 
+   */
+  constructor(value) {
+    this.value = value || null;
+  }
+
+  /**
+   * Checks if the authentication optional context data structure contains a null state value.
+   * @returns {boolean} True if no inner metadata exists.
+   */
+  isEmpty() {
+    return this.value === null;
+  }
+
+  /**
+   * Extracts the underlying map structure from the optional container box.
+   * @returns {Record<string, any>|null} The underlying data object state map reference.
+   */
+  get() {
+    return this.value;
+  }
+}
+
+/**
  * Converts a numeric Message Type (MT) enum to its equivalent string representation.
  * @param {number} messageType - The message type numeric identifier.
  * @returns {string} The string representation ('URL', 'Document', 'Notification', or 'UNKNOWN').
@@ -160,7 +188,7 @@ export function receive(conn) {
       }
     }
 
-  function onError(err) {
+    function onError(err) {
       cleanup();
       reject(err);
     }
@@ -302,17 +330,24 @@ export class Client {
 // --- SERVER IMPLEMENTATION ---
 
 /**
+ * @typedef {Object} AuthResult
+ * @property {boolean} authorized - True if validation matches.
+ * @property {AuthData} data - Optional session details mapping data payload.
+ */
+
+/**
  * Callback definition for processing ATXP authentication checks.
  * @callback AuthCallback
  * @param {string} username - Extracted user security profile validation identity.
  * @param {string} password - Extracted user pairing authentication token verify keys.
- * @returns {boolean} True if validation matches, false if access authentication credentials fail validation.
+ * @returns {AuthResult} Outlining matching verification and embedded structured metadata.
  */
 
 /**
  * Callback definition for processing custom operational business logic message updates.
  * @callback HandlerCallback
  * @param {AtxpMessage} msg - The fully deserialized message structure.
+ * @param {AuthData} authData - Optional session validation parameters container.
  * @returns {number} The evaluated exit ResponseCode logic flag value indicator to pass downstream.
  */
 
@@ -387,9 +422,15 @@ export class Server {
           break;
         }
 
-        if (this.authFn && !this.authFn(msg.auth.username, msg.auth.password)) {
-          await sendResponse(conn, ResponseCode.UNAUTHORIZED);
-          break;
+        let authData = new AuthData(null);
+
+        if (this.authFn) {
+          const { authorized, data } = this.authFn(msg.auth.username, msg.auth.password);
+          if (!authorized) {
+            await sendResponse(conn, ResponseCode.UNAUTHORIZED);
+            break;
+          }
+          authData = data;
         }
 
         const handler = this.handlers.get(msg.type);
@@ -398,7 +439,7 @@ export class Server {
           continue;
         }
 
-        const code = handler(msg);
+        const code = handler(msg, authData);
         await sendResponse(conn, code);
       }
     } finally {
@@ -428,7 +469,7 @@ export class Server {
  * @returns {HandlerCallback} A configured logic assertion handler validation middleware block.
  */
 export function validateURLHandler() {
-  return (msg) => {
+  return (msg, _authData) => {
     if (!msg.data || msg.data.length === 0) {
       return ResponseCode.ERROR;
     }
@@ -446,7 +487,7 @@ export function validateURLHandler() {
  * @returns {HandlerCallback} A configured logic assertion handler validation middleware block.
  */
 export function validateDocumentHandler(maxBytes) {
-  return (msg) => {
+  return (msg, _authData) => {
     if (!msg.data || msg.data.length === 0 || msg.data.length > maxBytes) {
       return ResponseCode.ERROR;
     }
