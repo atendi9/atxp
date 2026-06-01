@@ -21,6 +21,7 @@
   "author": "atendi9",
   "type": "module",
   "main": "atxp.js",
+  "types": "index.d.ts",
   "scripts": {
     "test": "node --test"
   }
