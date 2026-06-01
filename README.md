@@ -1,4 +1,4 @@
-# ATXP Protocol
+# ATXP (Atendi9 Transmission Exchange Protocol)
 
 A lightweight, text-framed application wire protocol designed for secure, fast, and structured communication over raw TCP or encrypted TLS transport layers. This repository provides cross-ecosystem implementations for both **Node.js (NPM)** and **Go (Golang)**.
 
@@ -27,23 +27,24 @@ import { Server, MT, ResponseCode, validateURLHandler } from '@atendi9/atxp-prot
 
 // Configure server with authentication rules
 const server = new Server((username, password) => {
-  return username === 'atendi9' && password === 'supersecret';
+  if (username === 'atendi9' && password === 'supersecret') {
+    return { authorized: true, data: new AuthData({ role: 'admin' }) };
+  }
+  return { authorized: false, data: new AuthData(null) };
 });
 
 // Register validation middleware handlers for specific message types
 server.registerHandler(MT.URL, validateURLHandler());
 
-// Register a custom text notification payload tracker
-server.registerHandler(MT.NOTIFICATION, (msg) => {
-  console.log(`[Notification Alert]: ${msg.data.toString('utf8')}`);
+// Register a document tracker that prints the incoming filename
+server.registerHandler(MT.DOCUMENT, (msg) => {
+  console.log(`[Document Received]: File Name: ${msg.filename || 'unknown'}, Size: ${msg.data.length} bytes`);
   return ResponseCode.OK;
 });
 
 // Start listening over a local port
 await server.listen(8080);
 console.log('ATXP JavaScript server running on port 8080');
-
-
 ```
 
 ### 2. Initialize a Client (Node.js)
@@ -55,14 +56,13 @@ import { Client } from '@atendi9/atxp-protocol';
 const socket = net.createConnection({ port: 8080 }, async () => {
   const client = new Client(socket, 'atendi9', 'supersecret');
 
-  // Dispatch a URL framework action string
-  const code = await client.sendURL('https://atendi9.com.br');
+  // Dispatch a Document transaction frame along with an explicit filename tracking property
+  const fileBuffer = Buffer.from('pdf_binary_content_stream');
+  const code = await client.sendDocument(fileBuffer, 'annual_report.pdf');
   console.log(`Server handling code returned: ${code}`);
 
   socket.end();
 });
-
-
 ```
 
 ---
@@ -78,20 +78,21 @@ import (
     "fmt"
     "log"
     "github.com/atendi9/atxp"
+    "github.com/atendi9/box"
 )
 
 func main() {
     // Create a TCP server with credential authorization callback checking rules
-    server := atxp.NewServer(func(username, password string) bool {
-        return username == "atendi9" && password == "supersecret"
+    server := atxp.NewServer(func(username, password string) (bool, atxp.AuthData) {
+        if username == "atendi9" && password == "supersecret" {
+            return true, box.NewSome(map[string]any{"role": "admin"})
+        }
+        return false, box.NewNone[map[string]any]()
     })
 
-    // Register explicit fallback validation behaviors
-    server.RegisterHandler(atxp.URL, atxp.ValidateURLHandler())
-
-    // Register custom notification business logic tracking handlers
-    server.RegisterHandler(atxp.NOTIFICATION, func(msg *atxp.Message) atxp.ResponseCode {
-        fmt.Printf("[Go Server] Received alert: %s\n", string(msg.Data.Get()))
+    // Register custom document handling tracking rules that extract the sent filename
+    server.RegisterHandler(atxp.DOCUMENT, func(msg *atxp.Message, authData atxp.AuthData) atxp.ResponseCode {
+        fmt.Printf("[Go Server] Document received! Name: %s, Data size: %d\n", msg.Filename, len(msg.Data.Get()))
         return atxp.OK
     })
 
@@ -106,8 +107,6 @@ func main() {
         log.Fatalf("Server connection loop encountered failure: %v", err)
     }
 }
-
-
 ```
 
 ### 2. Initialize a Client (Go)
@@ -132,15 +131,15 @@ func main() {
     // Wrap active stream inside an ATXP Client interface instance
     client := atxp.NewClient(conn, "atendi9", "supersecret")
 
-    // Transmit structures over the stream wire channel
-    status, err := client.SendNotification("Hello from the Go Client!")
+    // Transmit document payload bytes with an attached tracking filename over the wire channel
+    documentBytes := []byte("example data slice content")
+    status, err := client.SendDocument(documentBytes, "logs.txt")
     if err != nil {
         log.Fatalf("Failed to dispatch frame over wire stream: %v", err)
     }
 
     fmt.Printf("Server processing validation result returned status: %v\n", status)
 }
-
 
 ```
 
@@ -151,17 +150,17 @@ func main() {
 ATXP frames separate parameters cleanly over active TCP sequences divided using explicit control double tab-stops (`\t\t`) and trailing delimiters (`\n\n`):
 
 ```text
-[MESSAGE_TYPE]\t\t[BINARY_PAYLOAD_DATA]\t\tAuth:[USERNAME]::[PASSWORD]\n\n
-
-
+[MESSAGE_TYPE]\t\t[BINARY_PAYLOAD_DATA]\t\tAuth:[USERNAME]::[PASSWORD]::[FILENAME]\n\n
 ```
+
+*Note: The `::[FILENAME]` parameter is optional and only sent when the message type is `DOCUMENT` and has a configured file name.*
 
 ### Enum References
 
 | Name Value Token | Code Mapping Enum (Node.js) | Code Mapping Enum (Go) | Numeric Identifier Value | Description Parameters |
 | --- | --- | --- | --- | --- |
 | **URL** | `MT.URL` | `atxp.URL` | `0` | Resource target mapping indicator URLs. |
-| **DOCUMENT** | `MT.DOCUMENT` | `atxp.DOCUMENT` | `1` | Binary data buffers payloads or structural objects. |
+| **DOCUMENT** | `MT.DOCUMENT` | `atxp.DOCUMENT` | `1` | Binary data buffers payloads or structural objects with optional filename attribute payload fields. |
 | **NOTIFICATION** | `MT.NOTIFICATION` | `atxp.NOTIFICATION` | `2` | Plain text alert descriptors or operational updates. |
 
 ---

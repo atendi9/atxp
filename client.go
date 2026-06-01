@@ -41,12 +41,13 @@ func (c *Client) SendURL(url string) (ResponseCode, error) {
 	return ReceiveResponse(c.conn)
 }
 
-// SendDocument transmits a dedicated document byte slice frame payload using the internal [Client] connection state.
-func (c *Client) SendDocument(document []byte) (ResponseCode, error) {
+// SendDocument transmits a dedicated document byte slice frame payload with an optional filename using the internal [Client] connection state.
+func (c *Client) SendDocument(document []byte, filename string) (ResponseCode, error) {
 	msg := &Message{
-		Type: DOCUMENT,
-		Data: box.NewSome(document),
-		Auth: c.auth,
+		Type:     DOCUMENT,
+		Data:     box.NewSome(document),
+		Auth:     c.auth,
+		Filename: filename,
 	}
 
 	_, err := Send(c.conn, msg)

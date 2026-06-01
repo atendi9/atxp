@@ -53,6 +53,7 @@ export interface AtxpMessage {
   type: MT;
   data: Buffer;
   auth: MessageAuth;
+  filename?: string;
 }
 
 /**
@@ -131,9 +132,9 @@ export class Client {
   sendURL(url: string): Promise<ResponseCode>;
 
   /**
-   * Dispatches a dedicated Document binary buffer over the pipeline network connection.
+   * Dispatches a dedicated Document binary buffer over the pipeline network connection with optional filename tracking.
    */
-  sendDocument(documentBuffer: Buffer): Promise<ResponseCode>;
+  sendDocument(documentBuffer: Buffer, filename?: string): Promise<ResponseCode>;
 
   /**
    * Dispatches a structured text notification notification string component frame across the wire channel.

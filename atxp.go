@@ -32,9 +32,10 @@ var (
 // Message represents an internal ATXP protocol message frame.
 // It wraps the type, an optional byte payload data structure, and credentials.
 type Message struct {
-	Type MT
-	Data box.Optional[[]byte]
-	Auth Auth
+	Type     MT
+	Data     box.Optional[[]byte]
+	Auth     Auth
+	Filename string
 }
 
 // ResponseCode represents the status of an ATXP protocol handshake or message processing result.
@@ -99,7 +100,7 @@ func Serialize(msg *Message) ([]byte, error) {
 	if msg.Data.IsEmpty() {
 		msg.Data = box.NewSome([]byte{})
 	}
-	builder.Grow(len(typeStr) + 4 + len(msg.Data.Get()) + 13 + len(msg.Auth.Username) + len(msg.Auth.Password))
+	builder.Grow(len(typeStr) + 4 + len(msg.Data.Get()) + 13 + len(msg.Auth.Username) + len(msg.Auth.Password) + len(msg.Filename))
 
 	builder.WriteString(typeStr)
 	builder.WriteString("\t\t")
@@ -108,6 +109,10 @@ func Serialize(msg *Message) ([]byte, error) {
 	builder.WriteString(msg.Auth.Username)
 	builder.WriteString("::")
 	builder.WriteString(msg.Auth.Password)
+	if msg.Type == DOCUMENT && msg.Filename != "" {
+		builder.WriteString("::")
+		builder.WriteString(msg.Filename)
+	}
 	builder.WriteString("\n\n")
 
 	return []byte(builder.String()), nil
@@ -138,14 +143,17 @@ func Deserialize(buffer string, msg *Message) error {
 	}
 
 	authStr := buffer[authPartIdx+7 : tailIdx]
-	var before, after, ok = strings.Cut(authStr, "::")
-	if !ok {
+	parts := strings.Split(authStr, "::")
+	if len(parts) < 2 {
 		return ErrInvalidFormat
 	}
 
 	msg.Type = StringToType(typeStr)
-	msg.Auth.Username = before
-	msg.Auth.Password = after
+	msg.Auth.Username = parts[0]
+	msg.Auth.Password = parts[1]
+	if msg.Type == DOCUMENT && len(parts) > 2 {
+		msg.Filename = parts[2]
+	}
 	msg.Data = box.NewSome([]byte(dataStr))
 
 	return nil

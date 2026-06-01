@@ -77,12 +77,12 @@ func TestClient_SendDocument_Success(t *testing.T) {
 	client := NewClient(mockConn, "admin", "secret")
 	documentPayload := []byte{0x01, 0x02, 0x03, 0x04}
 
-	code, err := client.SendDocument(documentPayload)
+	code, err := client.SendDocument(documentPayload, "report.pdf")
 
 	assert.NoError(t, err)
 	assert.Equal(t, OK, code)
 
-	expectedPayload := "Document\t\t" + string(documentPayload) + "\t\tAuth:admin::secret\n\n"
+	expectedPayload := "Document\t\t" + string(documentPayload) + "\t\tAuth:admin::secret::report.pdf\n\n"
 	assert.Equal(t, expectedPayload, mockConn.writeBuf.String())
 }
 
@@ -95,7 +95,7 @@ func TestClient_SendDocument_WriteError(t *testing.T) {
 	}
 	client := NewClient(mockConn, "admin", "secret")
 
-	code, err := client.SendDocument([]byte("pdf_content"))
+	code, err := client.SendDocument([]byte("pdf_content"), "test.txt")
 
 	assert.Error(t, err)
 	assert.Equal(t, ERROR, code)

@@ -97,7 +97,7 @@ func TestSerialize(t *testing.T) {
 // TestDeserialize validates parsing compliance and robustness against malformed data blocks.
 func TestDeserialize(t *testing.T) {
 	t.Run("success parsing valid packet", func(t *testing.T) {
-		buffer := "Document\t\tsome-doc-payload\t\tAuth:gopher::secret\n\n"
+		buffer := "Document\t\tsome-doc-payload\t\tAuth:gopher::secret::doc.txt\n\n"
 		var msg Message
 
 		err := Deserialize(buffer, &msg)
@@ -106,6 +106,7 @@ func TestDeserialize(t *testing.T) {
 		assert.Equal(t, "gopher", msg.Auth.Username)
 		assert.Equal(t, "secret", msg.Auth.Password)
 		assert.Equal(t, "some-doc-payload", string(msg.Data.Get()))
+		assert.Equal(t, "doc.txt", msg.Filename)
 	})
 
 	t.Run("error parsing nil target reference", func(t *testing.T) {

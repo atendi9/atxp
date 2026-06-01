@@ -34,6 +34,21 @@ describe('ATXP Protocol Unit Tests', () => {
     assert.strictEqual(deserializedMsg.auth.password, originalMsg.auth.password);
   });
 
+  test('should correctly serialize and deserialize a Document with filename', () => {
+    const originalMsg = {
+      type: MT.DOCUMENT,
+      data: Buffer.from('filecontentbytes'),
+      auth: { username: 'admin', password: 'password' },
+      filename: 'invoice.pdf'
+    };
+
+    const payload = serialize(originalMsg);
+    const deserializedMsg = deserialize(payload.toString('utf8'));
+
+    assert.strictEqual(deserializedMsg.type, MT.DOCUMENT);
+    assert.strictEqual(deserializedMsg.filename, 'invoice.pdf');
+  });
+
   test('should throw error on deserialize when packet is malformed', () => {
     assert.throws(() => {
       deserialize('INVALID_PACKET_WITHOUT_DELIMITERS');

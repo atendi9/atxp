@@ -12,6 +12,7 @@ import tls from 'node:tls';
  * @property {number} type - The message type code (from MT enum).
  * @property {Buffer} data - The payload binary buffer data.
  * @property {MessageAuth} auth - The authentication payload.
+ * @property {string} [filename] - Optional filename tracking for Document type.
  */
 
 /**
@@ -119,9 +120,10 @@ export function serialize(msg) {
   const dataBuffer = msg.data ? Buffer.from(msg.data) : Buffer.alloc(0);
   const username = msg.auth?.username || '';
   const password = msg.auth?.password || '';
+  const filenamePart = (msg.type === MT.DOCUMENT && msg.filename) ? `::${msg.filename}` : '';
 
   const part1 = Buffer.from(`${typeStr}\t\t`);
-  const part2 = Buffer.from(`\t\tAuth:${username}::${password}\n\n`);
+  const part2 = Buffer.from(`\t\tAuth:${username}::${password}${filenamePart}\n\n`);
 
   return Buffer.concat([part1, dataBuffer, part2]);
 }
@@ -156,18 +158,21 @@ export function deserialize(bufferStr) {
   }
 
   const authStr = bufferStr.substring(authPartIdx + 7, tailIdx);
-  const delimiterIdx = authStr.indexOf('::');
-  if (delimiterIdx === -1) {
+  const parts = authStr.split('::');
+  if (parts.length < 2) {
     throw ErrInvalidFormat;
   }
 
-  const username = authStr.substring(0, delimiterIdx);
-  const password = authStr.substring(delimiterIdx + 2);
+  const username = parts[0];
+  const password = parts[1];
+  const type = stringToType(typeStr);
+  const filename = (type === MT.DOCUMENT && parts.length > 2) ? parts[2] : undefined;
 
   return {
-    type: stringToType(typeStr),
+    type,
     data: Buffer.from(dataStr),
-    auth: { username, password }
+    auth: { username, password },
+    filename
   };
 }
 
@@ -297,15 +302,17 @@ export class Client {
   }
 
   /**
-   * Dispatches a dedicated Document binary buffer over the pipeline network connection.
+   * Dispatches a dedicated Document binary buffer over the pipeline network connection with optional filename tracking.
    * @param {Buffer} documentBuffer - The document content payload package.
+   * @param {string} [filename] - The original name of the document file.
    * @returns {Promise<number>} Resolves to the specific response verification code returned by the server.
    */
-  async sendDocument(documentBuffer) {
+  async sendDocument(documentBuffer, filename) {
     const msg = {
       type: MT.DOCUMENT,
       data: documentBuffer,
-      auth: this.auth
+      auth: this.auth,
+      filename
     };
     await send(this.conn, msg);
     return receiveResponse(this.conn);
