@@ -7,7 +7,7 @@ A lightweight, text-framed application wire protocol designed for secure, fast, 
 ### Node.js (NPM)
 
 ```bash
-npm install atxp-protocol
+npm install @atendi9/atxp-protocol
 ```
 
 ### Go (pkg.go.dev)
@@ -23,7 +23,7 @@ go get -u github.com/atendi9/atxp
 ### 1. Initialize a Server (Node.js)
 
 ```javascript
-import { Server, MT, ResponseCode, validateURLHandler } from 'atxp-protocol';
+import { Server, MT, ResponseCode, validateURLHandler } from '@atendi9/atxp-protocol';
 
 // Configure server with authentication rules
 const server = new Server((username, password) => {
@@ -50,7 +50,7 @@ console.log('ATXP JavaScript server running on port 8080');
 
 ```javascript
 import net from 'node:net';
-import { Client } from 'atxp-protocol';
+import { Client } from '@atendi9/atxp-protocol';
 
 const socket = net.createConnection({ port: 8080 }, async () => {
   const client = new Client(socket, 'atendi9', 'supersecret');
