@@ -185,3 +185,110 @@ export function validateURLHandler(): HandlerCallback;
  * Factory creating validation handlers checking capacity limitations on incoming Document data frames.
  */
 export function validateDocumentHandler(maxBytes: number): HandlerCallback;
+
+// =====================================================================
+// ATXP V2 — secure layer (password-derived encryption, binary-safe framing)
+// =====================================================================
+
+/** Sizing constants for the V2 secure layer. */
+export const SALT_SIZE: number;
+export const NONCE_SIZE: number;
+export const KEY_SIZE: number;
+export const GCM_TAG_SIZE: number;
+export const LENGTH_PREFIX_SIZE: number;
+export const DEFAULT_KDF_ITERATIONS: number;
+export const MAX_FRAME_SIZE_V2: number;
+export const PROTOCOL_VERSION_V2: number;
+export const HANDSHAKE_MAGIC: string;
+export const DEFAULT_IO_TIMEOUT_MS: number;
+
+/** Sentinel errors for the V2 layer. */
+export const ErrInvalidChecksum: Error;
+export const ErrFrameTooLarge: Error;
+export const ErrFrameTooSmall: Error;
+export const ErrHandshake: Error;
+export const ErrWeakPassword: Error;
+export const ErrReplay: Error;
+export const ErrInvalidEnvelope: Error;
+
+/** A registrable V2 message type. */
+export interface MT_V2 {
+  name: string;
+  code: number;
+  description: string;
+}
+
+/** Registers a new V2 message type; returns false if the code is already used. */
+export function newMT(mt: MT_V2): boolean;
+/** Looks up a registered message type by code. */
+export function lookupMT(code: number): MT_V2 | undefined;
+/** Resolves a message type code to its name, or 'UNKNOWN'. */
+export function typeToStringV2(code: number): string;
+/** Resolves a message type name to its code, or -1 when unknown. */
+export function stringToTypeV2(name: string): number;
+
+/** Options for V2 endpoints. */
+export interface V2Options {
+  /** PBKDF2 iteration count. Both peers must agree. Default 600000. */
+  iterations?: number;
+  /**
+   * Maximum encrypted frame size in bytes. Raise for servers transferring large
+   * documents. Values below the minimum valid frame size are ignored. Default
+   * 16 MiB (MAX_FRAME_SIZE_V2).
+   */
+  maxFrameSize?: number;
+}
+
+/** Derives a 32-byte AES-256 key from a password and salt via PBKDF2-HMAC-SHA256. */
+export function deriveKey(password: string, salt: Buffer, iterations: number): Buffer;
+
+/** AES-256-GCM cipher producing the layout nonce || ciphertext || tag. */
+export class GCMCipher {
+  constructor(key: Buffer);
+  seal(plaintext: Buffer): Buffer;
+  open(frame: Buffer): Buffer;
+}
+
+/** Encodes a message and sequence number into the V2 inner plaintext envelope. */
+export function serializeV2(msg: AtxpMessage, seq: number): Buffer;
+/** Decodes a V2 message envelope. */
+export function deserializeV2(plaintext: Buffer): { seq: number; msg: AtxpMessage };
+
+/** Holds the shared password and KDF parameters for a V2 endpoint. */
+export class V2 {
+  constructor(password: string, options?: V2Options);
+  serverHandshake(framed: unknown): Promise<GCMCipher>;
+  clientHandshake(framed: unknown): Promise<GCMCipher>;
+}
+
+/** Creates a V2 endpoint, throwing ErrWeakPassword on an empty password. */
+export function NewV2(password: string, options?: V2Options): V2;
+
+/** Callback authorizing a connection by username only (V2 sends no password). */
+export type AuthCallbackV2 = (username: string) => AuthResult;
+
+/** Secure ATXP V2 client bound to a single connection. */
+export class ClientV2 {
+  sendURL(url: string): Promise<ResponseCode>;
+  sendDocument(doc: Buffer, filename?: string): Promise<ResponseCode>;
+  sendNotification(message: string): Promise<ResponseCode>;
+  send(type: number, data: Buffer, filename?: string): Promise<ResponseCode>;
+  close(): void;
+}
+
+/** Connects a secure V2 client: performs the handshake and returns the client. */
+export function newClientV2(
+  socket: Socket | TLSSocket,
+  password: string,
+  username: string,
+  options?: V2Options
+): Promise<ClientV2>;
+
+/** Secure ATXP V2 server. */
+export class ServerV2 {
+  constructor(password: string, authFn?: AuthCallbackV2, options?: V2Options);
+  registerHandler(type: number, handler: HandlerCallback): void;
+  listen(port: number, isTls?: boolean, tlsOptions?: SecureContextOptions | null): Promise<NetServer | TlsServer>;
+  handleConnection(socket: Socket | TLSSocket): Promise<void>;
+  close(): Promise<void>;
+}
